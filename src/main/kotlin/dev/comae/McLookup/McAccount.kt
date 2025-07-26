@@ -3,6 +3,7 @@ package dev.comae.McLookup
 import dev.comae.McLookup.exceptions.UnknownPlayerException
 import dev.comae.McLookup.methods.HttpRequests
 import org.json.JSONObject
+import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.net.URI
@@ -119,17 +120,24 @@ class McAccount {
         return headImage
     }
 
-    fun getPlayerHeadDataUrl(): String {
+    fun getPlayerHeadDataUrl(scale: Int = 1): String {
         val headImage = getPlayerHeadImage()
 
-        val outputStream = ByteArrayOutputStream()
-        ImageIO.write(headImage, "png", outputStream)
-        val imageBytes = outputStream.toByteArray()
+        val scaledWidth = headImage.width * scale
+        val scaledHeight = headImage.height * scale
 
+        val scaledImage = BufferedImage(scaledWidth, scaledHeight, BufferedImage.TYPE_INT_ARGB)
+        val graphics = scaledImage.createGraphics()
+
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR)
+        graphics.drawImage(headImage, 0, 0, scaledWidth, scaledHeight, null)
+        graphics.dispose()
+
+        val outputStream = ByteArrayOutputStream()
+        ImageIO.write(scaledImage, "png", outputStream)
+        val imageBytes = outputStream.toByteArray()
         val base64String = Base64.getEncoder().encodeToString(imageBytes)
 
-        val dataUrl = "data:image/png;base64,$base64String"
-
-        return dataUrl
+        return "data:image/png;base64,$base64String"
     }
 }
