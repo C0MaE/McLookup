@@ -17,6 +17,17 @@ class McAccount {
     var playerName: String? = null
     var textureBase64: String? = null
 
+    // Cached decoded textures object — avoids redundant Base64 decode + JSON parse on every call
+    private var _texturesJson: JSONObject? = null
+    private val texturesJson: JSONObject
+        get() = _texturesJson ?: run {
+            val decoded = String(Base64.getDecoder().decode(textureBase64))
+            JSONObject(decoded).getJSONObject("textures").also { _texturesJson = it }
+        }
+
+    // Cached skin image — avoids re-downloading from network on every call
+    private var _skinImage: BufferedImage? = null
+
     constructor(uuid: UUID) {
         this.uuid = uuid
     }
@@ -43,81 +54,41 @@ class McAccount {
 
         if(textures.getString("name") == "textures") {
             textureBase64 = textures.getString("value")
+            _texturesJson = null  // invalidate cache on reload
+            _skinImage = null
         }
 
         return this
     }
 
     fun getPlayerSkinURL(): String {
-        val decodedTexturesString = String(Base64.getDecoder().decode(textureBase64))
-
-        val jsonTextures = JSONObject(decodedTexturesString)
-
-        val texturesURLs = jsonTextures.getJSONObject("textures")
-
-        val skinObject = texturesURLs.getJSONObject("SKIN")
-
-        val skinUrl = skinObject.getString("url")
-
-        return skinUrl
+        return texturesJson.getJSONObject("SKIN").getString("url")
     }
 
     fun playerGotCape(): Boolean {
-        val decodedTexturesString = String(Base64.getDecoder().decode(textureBase64))
-
-        val jsonTextures = JSONObject(decodedTexturesString)
-
-        val texturesURLs = jsonTextures.getJSONObject("textures")
-
-        return texturesURLs.has("CAPE")
+        return texturesJson.has("CAPE")
     }
 
     fun getPlayerCapeURL(): String {
-        val decodedTexturesString = String(Base64.getDecoder().decode(textureBase64))
-
-        val jsonTextures = JSONObject(decodedTexturesString)
-
-        val texturesURLs = jsonTextures.getJSONObject("textures")
-
-        if(texturesURLs.has("CAPE")) {
-            val skinObject = texturesURLs.getJSONObject("CAPE")
-
-            val skinUrl = skinObject.getString("url")
-
-            return skinUrl
+        if(texturesJson.has("CAPE")) {
+            return texturesJson.getJSONObject("CAPE").getString("url")
         }
         return ""
     }
 
     fun getPlayerSkinImage(): BufferedImage {
-        val uri = URI(getPlayerSkinURL())
-        val url = uri.toURL()
-
-        val image: BufferedImage = ImageIO.read(url)
-
-        return image
+        return _skinImage ?: ImageIO.read(URI(getPlayerSkinURL()).toURL()).also { _skinImage = it }
     }
 
     fun getPlayerSkinDataUrl(): String {
-        val skinImage = getPlayerSkinImage()
-
         val outputStream = ByteArrayOutputStream()
-        ImageIO.write(skinImage, "png", outputStream)
-        val imageBytes = outputStream.toByteArray()
-
-        val base64String = Base64.getEncoder().encodeToString(imageBytes)
-
-        val dataUrl = "data:image/png;base64,$base64String"
-
-        return dataUrl
+        ImageIO.write(getPlayerSkinImage(), "png", outputStream)
+        val base64String = Base64.getEncoder().encodeToString(outputStream.toByteArray())
+        return "data:image/png;base64,$base64String"
     }
 
     fun getPlayerHeadImage(): BufferedImage {
-        val skinImage = getPlayerSkinImage()
-
-        val headImage: BufferedImage = skinImage.getSubimage(8, 8, 8, 8)
-
-        return headImage
+        return getPlayerSkinImage().getSubimage(8, 8, 8, 8)
     }
 
     fun getPlayerHeadDataUrl(scale: Int = 1): String {
@@ -135,8 +106,7 @@ class McAccount {
 
         val outputStream = ByteArrayOutputStream()
         ImageIO.write(scaledImage, "png", outputStream)
-        val imageBytes = outputStream.toByteArray()
-        val base64String = Base64.getEncoder().encodeToString(imageBytes)
+        val base64String = Base64.getEncoder().encodeToString(outputStream.toByteArray())
 
         return "data:image/png;base64,$base64String"
     }
